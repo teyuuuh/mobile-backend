@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fileUpload from 'express-fileupload';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { updateMaterialStatuses } from './utils/materialStatusUpdater.js';
@@ -56,6 +57,18 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Add this after express.json() middleware
+app.use(fileUpload({
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    abortOnLimit: true,
+    responseOnLimit: 'File size exceeds the 5MB limit',
+    useTempFiles: true,
+    tempFileDir: '/tmp/'
+}));
+
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
 // Create upload directories (similar to first server)
@@ -121,8 +134,6 @@ app.use((err, req, res, next) => {
 const PORT = config.port || 3000; // Add this line before the app.listen()
 
 app.listen(PORT, () => {
-    console.log(`✅ Server running on Vercel at port ${PORT}`);
-    console.log(`✅ Server running on all interfaces at port ${PORT}`);
     console.log(`✅ Server running on all interfaces at port ${PORT}`);
     console.log(`📱 React Native should connect to: ${config.apiUrl}`);
     console.log(`🌍 CORS enabled for:`, config.corsOrigins.join(', '));

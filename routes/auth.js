@@ -1318,4 +1318,99 @@ router.post('/verify-reset-token', async (req, res) => {
   }
 });
 
+// Add these near your other routes in auth.js
+
+// Profile Image Upload
+router.post('/upload-profile-image', authenticateToken, async (req, res) => {
+  try {
+    if (!req.files || !req.files.image) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'No image file provided' 
+      });
+    }
+
+    const imageFile = req.files.image;
+    const userEmail = req.body.email;
+
+    // Validate file type
+    const validMimeTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    if (!validMimeTypes.includes(imageFile.mimetype)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid file type. Only JPEG, PNG, and GIF are allowed.'
+      });
+    }
+
+    // Validate file size (max 5MB)
+    if (imageFile.size > 5 * 1024 * 1024) {
+      return res.status(400).json({
+        success: false,
+        error: 'File too large. Maximum size is 5MB.'
+      });
+    }
+
+    // Generate unique filename
+    const fileExt = imageFile.name.split('.').pop();
+    const filename = `profile_${userEmail}_${Date.now()}.${fileExt}`;
+
+    // Save file to uploads directory (create if doesn't exist)
+    const uploadDir = path.join(__dirname, '../../uploads/profile-images');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+    const filePath = path.join(uploadDir, filename);
+    await imageFile.mv(filePath);
+
+    // Update user's profile image in database
+    const imageUrl = `/uploads/profile-images/${filename}`;
+    await User.updateOne(
+      { email: userEmail },
+      { $set: { profileImage: imageUrl } }
+    );
+
+    res.json({
+      success: true,
+      message: 'Profile image uploaded successfully',
+      imageUrl
+    });
+
+  } catch (error) {
+    console.error('Profile image upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to upload profile image'
+    });
+  }
+});
+
+// Get Profile Image
+router.get('/profile-image/:email', async (req, res) => {
+  try {
+    const user = await User.findOne({ 
+      email: req.params.email 
+    }).select('profileImage');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      imageUrl: user.profileImage || null
+    });
+
+  } catch (error) {
+    console.error('Profile image fetch error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch profile image'
+    });
+  }
+});
+
 export default router;
