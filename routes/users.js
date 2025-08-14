@@ -4,6 +4,47 @@ import User from '../models/User.js';
 
 const router = express.Router();
 
+// Update user profile
+router.put('/:email', authenticateToken, async (req, res) => {
+  try {
+    const { email } = req.params;
+    const updates = req.body;
+
+    // Verify the requesting user can only update their own profile
+    if (req.user.email !== email) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Unauthorized to update this profile' 
+      });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { email },
+      updates,
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'User not found' 
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user
+    });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to update user',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 // Get user history
 router.get('/:userId/history', authenticateToken, async (req, res) => {
   try {
