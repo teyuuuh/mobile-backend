@@ -1212,108 +1212,39 @@ router.post('/reset-password', async (req, res) => {
 
 router.post('/verify-reset-token', async (req, res) => {
   try {
-    let { token, email, checkStatus } = req.body;
-    email = email ? email.toLowerCase().trim() : null;
+    const { token, email } = req.body;
 
-    if (checkStatus) {
-      // Check for any active reset token
-      const user = await User.findOne({ 
-        email,
-        resetToken: { $exists: true },
-        resetTokenExpires: { $gt: Date.now() },
-        resetTokenUsed: { $ne: true }
-      }).select('resetToken resetTokenExpires firstName lastName email');
-
-      if (!user) {
-        return res.json({
-          success: true,
-          hasActiveReset: false
-        });
-      }
-
-      return res.json({
-        success: true,
-        hasActiveReset: true,
-        token: user.resetToken,  // Make sure to send the token back
-        expiresAt: user.resetTokenExpires,
-        user: {
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email
-        }
+    if (!token || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token and email are required'
       });
     }
 
-    if (!token) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Token is required',
-        code: 'TOKEN_REQUIRED' 
-      });
-    }
-
-    // Full token verification
     const user = await User.findOne({
-      email,
+      email: email.toLowerCase(),
       resetToken: token,
       resetTokenExpires: { $gt: Date.now() },
       resetTokenUsed: { $ne: true }
-    }).select('firstName lastName email resetTokenExpires');
+    });
 
     if (!user) {
-      // Detailed error diagnostics
-      const potentialUser = await User.findOne({ email });
-      let errorReason = 'Invalid token';
-      let code = 'INVALID_TOKEN';
-      
-      if (!potentialUser) {
-        errorReason = 'No account with this email exists';
-        code = 'USER_NOT_FOUND';
-      } else {
-        const tokenRecord = await User.findOne({ email, resetToken: token });
-        
-        if (tokenRecord) {
-          if (tokenRecord.resetTokenUsed) {
-            errorReason = 'Token already used';
-            code = 'TOKEN_USED';
-          } else if (tokenRecord.resetTokenExpires <= Date.now()) {
-            errorReason = 'Token expired';
-            code = 'TOKEN_EXPIRED';
-          }
-        }
-      }
-
       return res.status(400).json({
         success: false,
-        error: errorReason,
-        code,
-        details: process.env.NODE_ENV === 'development' ? {
-          emailExists: !!potentialUser,
-          tokenExists: !!tokenRecord,
-          tokenExpired: tokenRecord?.resetTokenExpires <= Date.now(),
-          tokenUsed: tokenRecord?.resetTokenUsed
-        } : undefined
+        error: 'Invalid or expired reset token'
       });
     }
 
-    // Successful verification
     res.json({
       success: true,
-      message: 'Token is valid',
-      user: {
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email
-      },
-      expiresAt: user.resetTokenExpires
+      message: 'Token is valid'
     });
 
   } catch (error) {
     console.error('Token verification error:', error);
     res.status(500).json({
       success: false,
-      error: 'Server error during token verification',
-      code: 'SERVER_ERROR'
+      error: 'Server error'
     });
   }
 });
