@@ -1413,4 +1413,37 @@ router.get('/profile-image/:email', async (req, res) => {
   }
 });
 
+// Update user profile
+router.put('/update/:email', async (req, res) => {
+  try {
+    const email = req.params.email;
+    const updateData = req.body;
+
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { $set: updateData },
+      { new: true, select: '-password' }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: user
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+});
+
 export default router;
