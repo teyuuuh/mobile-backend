@@ -223,6 +223,9 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    console.log("Entered password during login:", password);
+    console.log("Stored hash in DB:", user.password);
+
     // Password comparison with logging
     console.log('Comparing passwords...');
     console.log('Stored password hash:', user.password ? '[PRESENT]' : '[MISSING]');
@@ -1191,6 +1194,7 @@ router.post('/reset-password', async (req, res) => {
     user.resetToken = undefined;
     user.resetTokenExpires = undefined;
     user.resetTokenUsed = true;
+    console.log("Raw new password from request:", newPassword);
     await user.save();
 
     res.json({
