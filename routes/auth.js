@@ -1187,8 +1187,7 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Update password (pre-save hook will hash it)
-    const saltRounds = 10;
-    user.password = await bcrypt.hash(newPassword, saltRounds);
+    user.password = newPassword;
     user.resetToken = undefined;
     user.resetTokenExpires = undefined;
     user.resetTokenUsed = true;
