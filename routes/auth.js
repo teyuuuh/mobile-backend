@@ -12,7 +12,7 @@ const API_BASE_URL = 'https://mobile-backend-aftl.onrender.com';
 // In your auth refresh endpoint
 router.post('/refresh', async (req, res) => {
   const { refreshToken } = req.body;
-  
+
   if (!refreshToken) {
     return res.status(401).json({ error: 'Refresh token required' });
   }
@@ -20,7 +20,7 @@ router.post('/refresh', async (req, res) => {
   try {
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
     const user = await User.findById(decoded.id);
-    
+
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
@@ -31,23 +31,23 @@ router.post('/refresh', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
-    
+
     const newRefreshToken = jwt.sign(
       { id: user._id },
       process.env.REFRESH_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({ 
+    res.json({
       success: true,
       authToken, // Changed from 'token' to 'authToken'
       refreshToken: newRefreshToken
     });
   } catch (error) {
     console.error('Refresh token error:', error);
-    res.status(401).json({ 
+    res.status(401).json({
       success: false,
-      error: 'Invalid refresh token' 
+      error: 'Invalid refresh token'
     });
   }
 });
@@ -1187,7 +1187,8 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Update password (pre-save hook will hash it)
-    user.password = newPassword;
+    const saltRounds = 10;
+    user.password = await bcrypt.hash(newPassword, saltRounds);
     user.resetToken = undefined;
     user.resetTokenExpires = undefined;
     user.resetTokenUsed = true;
@@ -1215,7 +1216,7 @@ router.post('/verify-reset-token', async (req, res) => {
 
     if (checkStatus) {
       // Check for any active reset token
-      const user = await User.findOne({ 
+      const user = await User.findOne({
         email,
         resetToken: { $exists: true },
         resetTokenExpires: { $gt: Date.now() },
@@ -1243,10 +1244,10 @@ router.post('/verify-reset-token', async (req, res) => {
     }
 
     if (!token) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         error: 'Token is required',
-        code: 'TOKEN_REQUIRED' 
+        code: 'TOKEN_REQUIRED'
       });
     }
 
@@ -1263,13 +1264,13 @@ router.post('/verify-reset-token', async (req, res) => {
       const potentialUser = await User.findOne({ email });
       let errorReason = 'Invalid token';
       let code = 'INVALID_TOKEN';
-      
+
       if (!potentialUser) {
         errorReason = 'No account with this email exists';
         code = 'USER_NOT_FOUND';
       } else {
         const tokenRecord = await User.findOne({ email, resetToken: token });
-        
+
         if (tokenRecord) {
           if (tokenRecord.resetTokenUsed) {
             errorReason = 'Token already used';
@@ -1322,9 +1323,9 @@ router.post('/verify-reset-token', async (req, res) => {
 router.post('/upload-profile-image', authenticateToken, async (req, res) => {
   try {
     if (!req.files || !req.files.image) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'No image file provided' 
+        error: 'No image file provided'
       });
     }
 
@@ -1386,8 +1387,8 @@ router.post('/upload-profile-image', authenticateToken, async (req, res) => {
 // Get Profile Image
 router.get('/profile-image/:email', async (req, res) => {
   try {
-    const user = await User.findOne({ 
-      email: req.params.email 
+    const user = await User.findOne({
+      email: req.params.email
     }).select('profileImage');
 
     if (!user) {
