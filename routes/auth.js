@@ -223,9 +223,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    console.log("Entered password during login:", password);
-    console.log("Stored hash in DB:", user.password);
-
     // Password comparison with logging
     console.log('Comparing passwords...');
     console.log('Stored password hash:', user.password ? '[PRESENT]' : '[MISSING]');
