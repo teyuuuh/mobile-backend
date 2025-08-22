@@ -798,11 +798,8 @@ router.get('/user/:email', async (req, res) => {
       });
     }
 
-    // Build full profileImage URL if available
-    let profileImageUrl = null;
-    if (user.profileImage) {
-      profileImageUrl = `${API_BASE_URL}${user.profileImage.startsWith('/') ? user.profileImage : '/' + user.profileImage}`;
-    }
+    // If profileImage is Cloudinary URL, just use it as is
+    let profileImageUrl = user.profileImage || null;
 
     res.json({
       success: true,
@@ -819,6 +816,7 @@ router.get('/user/:email', async (req, res) => {
     });
   }
 });
+
 
 
 
