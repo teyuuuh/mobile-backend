@@ -10,6 +10,7 @@ const router = Router();
 
 router.use(authenticateToken);
 
+// In your reserve.js file, update the POST route:
 router.post('/', async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -24,14 +25,14 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Update all references from materialId to bookId
+    // Find the material
     const material = await LearningMaterial.findById(bookId).session(session);
     if (!material) {
       await session.abortTransaction();
       return res.status(404).json({ error: 'Material not found' });
     }
 
-    // 2. Check material availability
+    // Check material availability - FIXED: Check if any copies are actually available
     if (material.availableCopies <= 0) {
       await session.abortTransaction();
       return res.status(400).json({
@@ -40,21 +41,28 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // 3. Create reservation
+    // Create reservation
     const newReservation = new ReserveRequest({
       bookTitle,
       author: author || 'Unknown Author',
       reservationDate: reservationDate ? new Date(reservationDate) : new Date(),
       pickupDate: new Date(pickupDate),
-      bookId: bookId,  // Changed from materialId to bookId
+      bookId: bookId,
       userId: userId || req.user._id,
       userName: userName || `${req.user.firstName} ${req.user.lastName}`,
       status: 'pending'
     });
 
-    console.log('Creating reservation:', newReservation);  // Log before save
-
     await newReservation.save({ session });
+    
+    // Decrement available copies and update status if needed - FIXED: This was missing
+    material.availableCopies -= 1;
+    if (material.availableCopies <= 0) {
+      material.status = 'unavailable';
+    }
+    
+    await material.save({ session });
+    
     await session.commitTransaction();
 
     res.status(201).json({
@@ -64,11 +72,7 @@ router.post('/', async (req, res) => {
 
   } catch (error) {
     await session.abortTransaction();
-    console.error('Reservation error:', {
-      message: error.message,
-      stack: error.stack,
-      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
-    });
+    console.error('Reservation error:', error);
     res.status(500).json({
       error: 'Failed to submit reservation',
       details: error.message,
@@ -197,6 +201,44 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
     res.json(request);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// When a reservation is cancelled/rejected
+router.patch('/:id/cancel', authenticateToken, async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const reservation = await ReserveRequest.findById(req.params.id).session(session);
+    
+    if (!reservation) {
+      await session.abortTransaction();
+      return res.status(404).json({ error: 'Reservation not found' });
+    }
+
+    // Update reservation status
+    reservation.status = 'cancelled';
+    reservation.cancelledAt = new Date();
+    await reservation.save({ session });
+
+    // Increment available copies of the material - FIXED: Restore the copy
+    const material = await LearningMaterial.findById(reservation.bookId).session(session);
+    if (material) {
+      material.availableCopies += 1;
+      if (material.status === 'unavailable') {
+        material.status = 'available';
+      }
+      await material.save({ session });
+    }
+
+    await session.commitTransaction();
+    res.json({ message: 'Reservation cancelled successfully' });
+  } catch (error) {
+    await session.abortTransaction();
+    res.status(500).json({ error: error.message });
+  } finally {
+    session.endSession();
   }
 });
 
