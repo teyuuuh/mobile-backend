@@ -19,42 +19,40 @@ router.post('/', async (req, res) => {
 
     if (!bookId || !pickupDate || !bookTitle) {
       await session.abortTransaction();
-      return res.status(400).json({
-        error: 'Missing required fields (bookId, pickupDate, bookTitle)'
-      });
+      return res.status(400).json({ error: 'Missing required fields (bookId, pickupDate, bookTitle)' });
     }
 
-    // Update all references from materialId to bookId
     const material = await LearningMaterial.findById(bookId).session(session);
     if (!material) {
       await session.abortTransaction();
       return res.status(404).json({ error: 'Material not found' });
     }
 
-    // 2. Check material availability
     if (material.availableCopies <= 0) {
       await session.abortTransaction();
-      return res.status(400).json({
-        error: 'No available copies to reserve',
-        availableCopies: material.availableCopies
-      });
+      return res.status(400).json({ error: 'No available copies to reserve' });
     }
 
-    // 3. Create reservation
     const newReservation = new ReserveRequest({
       bookTitle,
       author: author || 'Unknown Author',
       reservationDate: reservationDate ? new Date(reservationDate) : new Date(),
       pickupDate: new Date(pickupDate),
-      bookId: bookId,  // Changed from materialId to bookId
+      bookId,
       userId: userId || req.user._id,
       userName: userName || `${req.user.firstName} ${req.user.lastName}`,
       status: 'pending'
     });
 
-    console.log('Creating reservation:', newReservation);  // Log before save
-
     await newReservation.save({ session });
+
+    // ✅ Update material copies/status
+    material.availableCopies -= 1;
+    if (material.availableCopies <= 0) {
+      material.status = 'unavailable';
+    }
+    await material.save({ session });
+
     await session.commitTransaction();
 
     res.status(201).json({
@@ -64,20 +62,13 @@ router.post('/', async (req, res) => {
 
   } catch (error) {
     await session.abortTransaction();
-    console.error('Reservation error:', {
-      message: error.message,
-      stack: error.stack,
-      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
-    });
-    res.status(500).json({
-      error: 'Failed to submit reservation',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    console.error('Reservation error:', error);
+    res.status(500).json({ error: 'Failed to submit reservation', details: error.message });
   } finally {
     session.endSession();
   }
 });
+
 
 router.patch('/:id/return', authenticateToken, async (req, res) => {
   try {
