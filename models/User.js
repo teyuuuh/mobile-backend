@@ -7,7 +7,7 @@ const userSchema = new Schema({
   middleName: { type: String },
   lastName: { type: String, required: true },
   studentID: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   phone: { type: String, required: true },
   dob: { type: Date, required: true },
   password: { type: String, required: true },
@@ -24,7 +24,7 @@ const userSchema = new Schema({
   otp: { type: String },
   otpExpires: { type: Date },
   role: { type: String, default: 'patron' },
-  
+
   // Password reset fields
   resetToken: { type: String },
   resetTokenExpires: { type: Date },
@@ -53,7 +53,7 @@ userSchema.pre('save', async function (next) {
     try {
       const salt = await bcrypt.genSalt(10);
       this.password = await bcrypt.hash(this.password, salt);
-      
+
       // Clear reset token if password was changed
       if (this.resetToken) {
         this.resetToken = undefined;
@@ -68,12 +68,12 @@ userSchema.pre('save', async function (next) {
 });
 
 // Password comparison method
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
 // Password reset token generation
-userSchema.methods.generatePasswordResetToken = function() {
+userSchema.methods.generatePasswordResetToken = function () {
   const resetToken = crypto.randomBytes(32).toString('hex');
   this.resetToken = resetToken;
   this.resetTokenExpires = Date.now() + 3600000; // 1 hour
@@ -82,14 +82,14 @@ userSchema.methods.generatePasswordResetToken = function() {
 };
 
 // Clear reset token
-userSchema.methods.clearPasswordResetToken = function() {
+userSchema.methods.clearPasswordResetToken = function () {
   this.resetToken = undefined;
   this.resetTokenExpires = undefined;
   this.resetTokenUsed = true;
 };
 
 // Check if reset token is valid
-userSchema.methods.isResetTokenValid = function(token) {
+userSchema.methods.isResetTokenValid = function (token) {
   return (
     this.resetToken === token &&
     this.resetTokenExpires > Date.now() &&
