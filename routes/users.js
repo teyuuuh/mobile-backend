@@ -1,7 +1,7 @@
 import express from 'express';
 import authenticateToken from '../middleware/auth.js';
 import User from '../models/User.js';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../config/cloudinary.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
