@@ -58,9 +58,8 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Add this after express.json() middleware
 app.use(fileUpload({
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    limits: { fileSize: 5 * 1024 * 1024 },
     abortOnLimit: true,
     responseOnLimit: 'File size exceeds the 5MB limit',
     useTempFiles: true,
@@ -70,20 +69,6 @@ app.use(fileUpload({
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-
-// Create upload directories (similar to first server)
-const uploadsDir = path.join(__dirname, 'uploads');
-const avatarsDir = path.join(uploadsDir, 'avatars');
-const uploadDir = path.join(__dirname, 'uploads', 'profile-images');
-
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir);
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Serve profile images
-app.use('/profile-images', express.static(uploadDir));
 
 // Database connection
 mongoose.connect(config.mongoUri, {
