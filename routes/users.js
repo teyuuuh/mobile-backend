@@ -3,8 +3,13 @@ import authenticateToken from '../middleware/auth.js';
 import User from '../models/User.js';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const router = express.Router();
+
+// ✅ ayusin dirname para consistent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Get user history
 router.get('/:userId/history', authenticateToken, async (req, res) => {
@@ -63,8 +68,8 @@ router.post('/:userId/upload-profile', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Invalid file type. Only images allowed.' });
     }
 
-    // Define upload path
-    const uploadDir = path.join(process.cwd(), 'uploads/profile-images');
+    // ✅ Gamitin __dirname relative sa project
+    const uploadDir = path.join(__dirname, '..', 'uploads', 'profile-images');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
