@@ -116,13 +116,12 @@ app.use((err, req, res, next) => {
 
 
 
-const PORT = config.port || 3000; // Add this line before the app.listen()
+const PORT = process.env.PORT || config.port || 3000;
 
-app.listen(PORT, () => {
-    console.log(`✅ Server running on all interfaces at port ${PORT}`);
-    console.log(`📱 React Native should connect to: ${config.apiUrl}`);
-    console.log(`🌍 CORS enabled for:`, config.corsOrigins.join(', '));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on port ${PORT}`);
 });
+
 
 // Export config for use in other files if needed
 export { config };
