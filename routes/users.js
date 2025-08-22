@@ -1,9 +1,9 @@
 import express from 'express';
 import authenticateToken from '../middleware/auth.js';
 import User from '../models/User.js';
-import path from 'path';
-import fs from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
 import { fileURLToPath } from 'url';
+import path from 'path';
 
 const router = express.Router();
 
@@ -49,10 +49,9 @@ router.get('/:userId/history', authenticateToken, async (req, res) => {
   }
 });
 
-// 📌 Upload profile image
+// Upload profile image to Cloudinary
 router.post('/:userId/upload-profile', authenticateToken, async (req, res) => {
   try {
-    // Check ownership
     if (req.user._id.toString() !== req.params.userId) {
       return res.status(403).json({ error: 'Unauthorized to upload for this user' });
     }
@@ -63,37 +62,28 @@ router.post('/:userId/upload-profile', authenticateToken, async (req, res) => {
 
     const file = req.files.profileImage;
 
-    // Ensure it's an image
-    if (!file.mimetype.startsWith('image/')) {
-      return res.status(400).json({ error: 'Invalid file type. Only images allowed.' });
-    }
+    // Upload to Cloudinary
+    const result = await cloudinary.uploader.upload(file.tempFilePath, {
+      folder: 'profile-images', // organize in folder
+      public_id: `${req.params.userId}_${Date.now()}`,
+      resource_type: 'image',
+    });
 
-    // ✅ Gamitin __dirname relative sa project
-    const uploadDir = path.join(__dirname, '..', 'uploads', 'profile-images');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    const fileName = `${Date.now()}_${file.name}`;
-    const uploadPath = path.join(uploadDir, fileName);
-
-    // Move file to uploads folder
-    await file.mv(uploadPath);
-
-    // Update user document with profileImage path (URL to serve)
+    // Update user with Cloudinary URL
     const user = await User.findByIdAndUpdate(
       req.params.userId,
-      { profileImage: `/profile-images/${fileName}` },
+      { profileImage: result.secure_url },
       { new: true }
     );
 
     res.json({
+      success: true,
       message: 'Profile image uploaded successfully',
-      profileImage: user.profileImage,
+      profileImage: result.secure_url, // Cloudinary URL
       user
     });
   } catch (error) {
-    console.error('Profile upload error:', error);
+    console.error('Cloudinary upload error:', error);
     res.status(500).json({ error: 'Server error while uploading profile image' });
   }
 });
