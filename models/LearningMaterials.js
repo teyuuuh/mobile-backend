@@ -13,7 +13,7 @@ const learningMaterialSchema = new Schema({
   },
   status: { 
     type: String, 
-    enum: ['available', 'reserved', 'pending', 'borrowed', 'overdue', 'cancelled'],
+    enum: ['available', 'reserved', 'pending', 'borrowed', 'overdue', 'cancelled','unavailable'],
     default: 'available'
   },
   price: String,
