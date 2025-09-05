@@ -1,7 +1,7 @@
-import { Router } from 'express';
-const router = Router();
+import express from 'express';
+const router = express.Router();
 import { find, countDocuments, findOneAndUpdate, updateMany, findOneAndDelete } from '../models/Notification.js';
-import auth from '../middleware/auth';
+import auth from '../middleware/auth.js';
 
 // Get user notifications
 router.get('/', auth, async (req, res) => {

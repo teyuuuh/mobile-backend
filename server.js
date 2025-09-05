@@ -26,7 +26,7 @@ import borrowRoutes from './routes/borrow.js';
 import feedbackRoutes from './routes/feedback.js';
 import bookRatingRoutes from './routes/bookrating.js'
 import userRoutes from './routes/users.js'
-import notificationRoutes from './routes/notifications.js'
+import notificationRoutes from './routes/notifications.js'; // Adjust path as needed
 
 
 // Initialize app
@@ -106,7 +106,7 @@ app.use('/api/borrow-requests', borrowRoutes);
 app.use('/api/feedback', feedbackRoutes); // Keep your existing route
 app.use('/api/ratings', bookRatingRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/notification', notificationRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 
 
