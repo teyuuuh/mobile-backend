@@ -1,11 +1,11 @@
 import express from 'express';
 import Notification from '../models/Notification.js';
-import auth from '../middleware/auth.js';
+import authenticateToken from '../middleware/auth.js';
 
 const router = express.Router();
 
 // Get user notifications
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 5;
@@ -34,9 +34,9 @@ router.get('/', authMiddleware, async (req, res) => {
 // Get unread count
 router.get('/unread-count', auth, async (req, res) => {
   try {
-    const unreadCount = await Notification.countDocuments({
-      userId: req.user._id,
-      isRead: false
+    const unreadCount = await Notification.countDocuments({ 
+      userId: req.user._id, 
+      isRead: false 
     });
     res.json({ unreadCount });
   } catch (error) {
