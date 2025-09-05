@@ -5,44 +5,38 @@ import auth from '../middleware/auth.js';
 const router = express.Router();
 
 // Get user notifications
-router.get('/', auth, async (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit) || 5;
     const skip = (page - 1) * limit;
 
-    const notifications = await Notification.find({ userId: req.user._id })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const totalNotifications = await Notification.countDocuments({ userId: req.user._id });
-    const unreadCount = await Notification.countDocuments({ 
-      userId: req.user._id, 
-      isRead: false 
-    });
+    const [notifications, total, unreadCount] = await Promise.all([
+      Notification.find({ userId: req.user._id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Notification.countDocuments({ userId: req.user._id }),
+      Notification.countDocuments({ userId: req.user._id, isRead: false })
+    ]);
 
     res.json({
       notifications,
-      pagination: {
-        currentPage: page,
-        totalPages: Math.ceil(totalNotifications / limit),
-        totalNotifications,
-        unreadCount
-      }
+      totalPages: Math.ceil(total / limit),
+      unreadCount,
     });
   } catch (error) {
     console.error('Error fetching notifications:', error);
-    res.status(500).json({ error: 'Failed to fetch notifications' });
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get unread count
 router.get('/unread-count', auth, async (req, res) => {
   try {
-    const unreadCount = await Notification.countDocuments({ 
-      userId: req.user._id, 
-      isRead: false 
+    const unreadCount = await Notification.countDocuments({
+      userId: req.user._id,
+      isRead: false
     });
     res.json({ unreadCount });
   } catch (error) {
