@@ -1,7 +1,8 @@
 import express from 'express';
-const router = express.Router();
-import { find, countDocuments, findOneAndUpdate, updateMany, findOneAndDelete } from '../models/Notification.js';
+import Notification from '../models/Notification.js';
 import auth from '../middleware/auth.js';
+
+const router = express.Router();
 
 // Get user notifications
 router.get('/', auth, async (req, res) => {
@@ -10,13 +11,13 @@ router.get('/', auth, async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const notifications = await find({ userId: req.user._id })
+    const notifications = await Notification.find({ userId: req.user._id })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    const totalNotifications = await countDocuments({ userId: req.user._id });
-    const unreadCount = await countDocuments({ 
+    const totalNotifications = await Notification.countDocuments({ userId: req.user._id });
+    const unreadCount = await Notification.countDocuments({ 
       userId: req.user._id, 
       isRead: false 
     });
@@ -39,7 +40,7 @@ router.get('/', auth, async (req, res) => {
 // Get unread count
 router.get('/unread-count', auth, async (req, res) => {
   try {
-    const unreadCount = await countDocuments({ 
+    const unreadCount = await Notification.countDocuments({ 
       userId: req.user._id, 
       isRead: false 
     });
@@ -52,7 +53,7 @@ router.get('/unread-count', auth, async (req, res) => {
 // Mark notification as read
 router.patch('/:id/read', auth, async (req, res) => {
   try {
-    const notification = await findOneAndUpdate(
+    const notification = await Notification.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
       { isRead: true },
       { new: true }
@@ -71,7 +72,7 @@ router.patch('/:id/read', auth, async (req, res) => {
 // Mark all notifications as read
 router.patch('/mark-all-read', auth, async (req, res) => {
   try {
-    await updateMany(
+    await Notification.updateMany(
       { userId: req.user._id, isRead: false },
       { isRead: true }
     );
@@ -85,7 +86,7 @@ router.patch('/mark-all-read', auth, async (req, res) => {
 // Delete notification
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const notification = await findOneAndDelete({
+    const notification = await Notification.findOneAndDelete({
       _id: req.params.id,
       userId: req.user._id
     });
