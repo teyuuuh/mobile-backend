@@ -5,12 +5,33 @@ import User from '../models/User.js';
 import LearningMaterial from '../models/LearningMaterials.js';
 import ReserveRequest from '../models/ReserveRequest.js';
 import mongoose from 'mongoose';
+import Activity from '../models/Activity.js'; // 6. Add Activity Logging
+import Notification from '../models/Notification.js'; // 5. Add Notification System
 
 const router = Router();
-
 router.use(authenticateToken);
 
-// In your reserve.js file, update the POST route:
+// 5. Add Notification Service (simplified version)
+const NotificationService = {
+  async createNotification(userId, type, title, message) {
+    try {
+      const notification = new Notification({
+        userId,
+        type,
+        title,
+        message,
+        isRead: false,
+        createdAt: new Date()
+      });
+      await notification.save();
+      return notification;
+    } catch (error) {
+      console.error('Notification creation error:', error);
+    }
+  }
+};
+
+// POST - Create reservation (with enhanced features)
 router.post('/', async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -25,14 +46,22 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Find the material
+    // 8. Better Data Population - Get user info if not provided
+    let userInfo = {};
+    if (!userName || !userId) {
+      const user = await User.findById(req.user._id).session(session);
+      userInfo = {
+        userId: user._id,
+        userName: `${user.firstName} ${user.lastName}`
+      };
+    }
+
     const material = await LearningMaterial.findById(bookId).session(session);
     if (!material) {
       await session.abortTransaction();
       return res.status(404).json({ error: 'Material not found' });
     }
 
-    // Check material availability - FIXED: Check if any copies are actually available
     if (material.availableCopies <= 0) {
       await session.abortTransaction();
       return res.status(400).json({
@@ -41,92 +70,80 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Create reservation
     const newReservation = new ReserveRequest({
       bookTitle,
-      author: author || 'Unknown Author',
+      author: author || material.author || 'Unknown Author',
       reservationDate: reservationDate ? new Date(reservationDate) : new Date(),
       pickupDate: new Date(pickupDate),
       bookId: bookId,
-      userId: userId || req.user._id,
-      userName: userName || `${req.user.firstName} ${req.user.lastName}`,
+      userId: userId || userInfo.userId || req.user._id,
+      userName: userName || userInfo.userName || `${req.user.firstName} ${req.user.lastName}`,
       status: 'pending'
     });
 
     await newReservation.save({ session });
-    
-    // Decrement available copies and update status if needed - FIXED: This was missing
+
+    // 10. Enhanced Material Handling
     material.availableCopies -= 1;
-    if (material.availableCopies <= 0) {
-      material.status = 'unavailable';
-    }
-    
+    material.status = material.availableCopies <= 0 ? 'unavailable' : 'available';
     await material.save({ session });
-    
+
     await session.commitTransaction();
+    session.endSession();
+
+    // 5. Send Notification
+    await NotificationService.createNotification(
+      newReservation.userId,
+      'reservation_created',
+      'Reservation Submitted',
+      `Your reservation for "${newReservation.bookTitle}" has been submitted successfully.`
+    );
+
+    // 6. Activity Logging
+    const user = await User.findById(newReservation.userId);
+    await new Activity({
+      userId: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      action: 'reserve_add',
+      details: `Reserved material: ${material.name}`,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    }).save();
 
     res.status(201).json({
       message: 'Reservation submitted successfully',
-      request: newReservation
+      request: newReservation,
+      updatedMaterial: material
     });
 
   } catch (error) {
     await session.abortTransaction();
+    session.endSession();
     console.error('Reservation error:', error);
     res.status(500).json({
       error: 'Failed to submit reservation',
-      details: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: error.message
     });
-  } finally {
-    session.endSession();
   }
 });
 
-router.patch('/:id/return', authenticateToken, async (req, res) => {
+// 9. Add Admin Endpoints (with proper authorization check)
+router.get('/admin/all-requests', async (req, res) => {
   try {
-    const request = await BorrowRequest.findById(req.params.id);
-    if (!request) {
-      return res.status(404).json({ error: 'Borrow request not found' });
+    // Check if user is admin
+    const user = await User.findById(req.user._id);
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Admin required.' });
     }
 
-    // Update the borrow request status
-    await BorrowRequest.findByIdAndUpdate(
-      req.params.id,
-      { status: 'returned' }
-    );
-
-    // Increase available copies and update status if needed
-    await LearningMaterial.findByIdAndUpdate(
-      request.materialId,
-      {
-        $inc: { availableCopies: 1 },
-        status: 'available'
-      }
-    );
-
-    res.json({ message: 'Book returned successfully' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.get('/my-requests', async (req, res) => {
-  try {
-    const requests = await ReserveRequest.find({ userId: req.user._id })
-      .populate('bookId', 'title author imageUrl isbn accessionNumber yearofpub typeofmat status')
-      .sort({ createdAt: -1 });
-    res.status(200).json(requests);
-  } catch (error) {
-    console.error('Get my requests error:', error);
-    res.status(500).json({ error: 'Failed to fetch your reservation requests' });
-  }
-});
-
-router.get('/', authenticateToken, async (req, res) => {
-  try {
-    const requests = await BorrowRequest.find()
-      .populate('userId', 'firstName lastName')
+    // 8. Extensive Data Population
+    const requests = await ReserveRequest.find()
+      .populate('userId', 'firstName lastName email phone')
+      .populate('bookId', 'name author imageUrl isbn accessionNumber status availableCopies')
+      .sort({ createdAt: -1 })
       .lean();
 
     res.status(200).json(requests);
@@ -135,110 +152,203 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/debug', async (req, res) => {
-  try {
-    const requests = await BorrowRequest.find().limit(1);
-    const sample = requests[0];
-    const brokenRefs = await BorrowRequest.aggregate([
-      {
-        $lookup: {
-          from: 'learningmaterials',
-          localField: 'materialId',
-          foreignField: '_id',
-          as: 'material'
-        }
-      },
-      {
-        $match: {
-          'material.0': { $exists: false }
-        }
-      }
-    ]);
+// 7. Complex Status Update Handling
+router.patch('/:id/status', async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    res.json({
-      rawRequest: sample,
-      brokenReferences: brokenRefs,
-      materialModelExists: true
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.get('/check-overdue', authenticateToken, async (req, res) => {
-  try {
-    const now = new Date();
-    const result = await BorrowRequest.updateMany(
-      {
-        returnDate: { $lt: now },
-        status: { $in: ['pending', 'borrowed'] }
-      },
-      {
-        $set: { status: 'overdue' }
-      }
-    );
-    res.status(200).json({ updated: result.modifiedCount });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.patch('/:id/status', authenticateToken, async (req, res) => {
   try {
     const { status } = req.body;
-    const request = await BorrowRequest.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
+    const { id } = req.params;
 
-    // Update the corresponding material status
-    await LearningMaterial.findByIdAndUpdate(
-      request.materialId,
-      { status }
-    );
+    // Check if user is admin
+    const user = await User.findById(req.user._id);
+    if (user.role !== 'admin') {
+      await session.abortTransaction();
+      return res.status(403).json({ error: 'Access denied. Admin required.' });
+    }
 
-    res.json(request);
+    const reserveRequest = await ReserveRequest.findById(id).session(session);
+    if (!reserveRequest) {
+      await session.abortTransaction();
+      return res.status(404).json({ error: 'Reserve request not found' });
+    }
+
+    const oldStatus = reserveRequest.status;
+    reserveRequest.status = status;
+    reserveRequest.updatedAt = new Date();
+
+    const material = await LearningMaterial.findById(reserveRequest.bookId).session(session);
+
+    // 7. Complex Status Handling
+    if (status === 'borrowed') {
+      // Convert to borrow request
+      const newBorrow = new BorrowRequest({
+        userId: reserveRequest.userId,
+        userName: reserveRequest.userName,
+        materialId: reserveRequest.bookId,
+        bookTitle: reserveRequest.bookTitle,
+        author: reserveRequest.author,
+        imageUrl: material?.imageUrl || '',
+        borrowDate: new Date(),
+        returnDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        status: 'borrowed'
+      });
+      
+      await newBorrow.save({ session });
+      
+    } else if (status === 'cancelled' || status === 'rejected') {
+      // Return the copy to available pool
+      if (material) {
+        material.availableCopies += 1;
+        material.status = material.availableCopies > 0 ? 'available' : 'unavailable';
+        await material.save({ session });
+      }
+    }
+
+    await reserveRequest.save({ session });
+    await session.commitTransaction();
+    session.endSession();
+
+    // 5. Send appropriate notification based on status change
+    let notificationTitle = '';
+    let notificationMessage = '';
+
+    switch (status) {
+      case 'approved':
+        notificationTitle = 'Reservation Approved';
+        notificationMessage = `Your reservation for "${reserveRequest.bookTitle}" has been approved.`;
+        break;
+      case 'borrowed':
+        notificationTitle = 'Reservation Converted';
+        notificationMessage = `Your reservation for "${reserveRequest.bookTitle}" has been converted to a borrow.`;
+        break;
+      case 'cancelled':
+      case 'rejected':
+        notificationTitle = 'Reservation Cancelled';
+        notificationMessage = `Your reservation for "${reserveRequest.bookTitle}" has been ${status}.`;
+        break;
+    }
+
+    if (notificationTitle && oldStatus !== status) {
+      await NotificationService.createNotification(
+        reserveRequest.userId,
+        `reservation_${status}`,
+        notificationTitle,
+        notificationMessage
+      );
+    }
+
+    // 6. Activity Logging
+    await new Activity({
+      userId: req.user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      action: `reserve_status_${status}`,
+      details: `Changed reservation status from ${oldStatus} to ${status} for: ${reserveRequest.bookTitle}`,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    }).save();
+
+    res.json({
+      message: `Reservation status updated to ${status}`,
+      reserveRequest
+    });
+
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error('Status update error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// When a reservation is cancelled/rejected
-router.patch('/:id/cancel', authenticateToken, async (req, res) => {
+// GET user reservations with better data population
+router.get('/my-requests', async (req, res) => {
+  try {
+    // 8. Enhanced Data Population
+    const requests = await ReserveRequest.find({ userId: req.user._id })
+      .populate('bookId', 'title author imageUrl isbn accessionNumber yearofpub typeofmat status availableCopies')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(requests);
+  } catch (error) {
+    console.error('Get my requests error:', error);
+    res.status(500).json({ error: 'Failed to fetch your reservation requests' });
+  }
+});
+
+// Cancel reservation with enhanced features
+router.patch('/:id/cancel', async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const reservation = await ReserveRequest.findById(req.params.id).session(session);
-    
+
     if (!reservation) {
       await session.abortTransaction();
       return res.status(404).json({ error: 'Reservation not found' });
     }
 
-    // Update reservation status
+    // Check if user owns this reservation or is admin
+    const user = await User.findById(req.user._id);
+    if (reservation.userId.toString() !== req.user._id.toString() && user.role !== 'admin') {
+      await session.abortTransaction();
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    if (!['pending', 'approved'].includes(reservation.status)) {
+      await session.abortTransaction();
+      return res.status(400).json({ error: 'Cannot cancel this reservation' });
+    }
+
+    const oldStatus = reservation.status;
     reservation.status = 'cancelled';
     reservation.cancelledAt = new Date();
     await reservation.save({ session });
 
-    // Increment available copies of the material - FIXED: Restore the copy
+    // 10. Enhanced Material Handling
     const material = await LearningMaterial.findById(reservation.bookId).session(session);
     if (material) {
       material.availableCopies += 1;
-      if (material.status === 'unavailable') {
-        material.status = 'available';
-      }
+      material.status = material.availableCopies > 0 ? 'available' : 'unavailable';
       await material.save({ session });
     }
 
     await session.commitTransaction();
+    session.endSession();
+
+    // 5. Send cancellation notification
+    if (oldStatus !== 'cancelled') {
+      await NotificationService.createNotification(
+        reservation.userId,
+        'reservation_cancelled',
+        'Reservation Cancelled',
+        `Your reservation for "${reservation.bookTitle}" has been cancelled.`
+      );
+    }
+
+    // 6. Activity Logging
+    await new Activity({
+      userId: req.user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+      action: 'reserve_cancel',
+      details: `Cancelled reservation for: ${reservation.bookTitle}`,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    }).save();
+
     res.json({ message: 'Reservation cancelled successfully' });
   } catch (error) {
     await session.abortTransaction();
-    res.status(500).json({ error: error.message });
-  } finally {
     session.endSession();
+    res.status(500).json({ error: error.message });
   }
 });
 
