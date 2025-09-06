@@ -32,7 +32,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // Get unread count
-router.get('/unread-count', auth, async (req, res) => {
+router.get('/unread-count', authenticateToken, async (req, res) => {
   try {
     const unreadCount = await Notification.countDocuments({ 
       userId: req.user._id, 
@@ -45,7 +45,7 @@ router.get('/unread-count', auth, async (req, res) => {
 });
 
 // Mark notification as read
-router.patch('/:id/read', auth, async (req, res) => {
+router.patch('/:id/read', authenticateToken, async (req, res) => {
   try {
     const notification = await Notification.findOneAndUpdate(
       { _id: req.params.id, userId: req.user._id },
@@ -64,7 +64,7 @@ router.patch('/:id/read', auth, async (req, res) => {
 });
 
 // Mark all notifications as read
-router.patch('/mark-all-read', auth, async (req, res) => {
+router.patch('/mark-all-read', authenticateToken, async (req, res) => {
   try {
     await Notification.updateMany(
       { userId: req.user._id, isRead: false },
@@ -78,7 +78,7 @@ router.patch('/mark-all-read', auth, async (req, res) => {
 });
 
 // Delete notification
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const notification = await Notification.findOneAndDelete({
       _id: req.params.id,
