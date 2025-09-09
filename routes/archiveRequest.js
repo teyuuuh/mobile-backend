@@ -33,17 +33,18 @@ const NotificationService = {
 router.post('/', async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    const { fullName, documentType, purpose, purposeOther, date, userId } = req.body;
-    
+    const { fullName, documentType, documentTypeOther, purpose, purposeOther, date, userId } = req.body;
+
     const newRequest = new ArchiveRequest({
       fullName,
       documentType,
+      documentTypeOther: documentType === 'Other' ? documentTypeOther : undefined,
       purpose,
-      purposeOther,
+      purposeOther: purpose === 'Other' ? purposeOther : undefined,
       date,
       userId: userId || req.user._id
     });
-    
+
     await newRequest.save();
 
     // 6. Activity Logging
