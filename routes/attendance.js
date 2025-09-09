@@ -2,10 +2,10 @@ import { Router } from 'express';
 const router = Router();
 import Attendance from '../models/Attendance.js';
 
-// Correct usage
+// Get all attendance records
 router.get('/', async (req, res) => {
   try {
-    const data = await Attendance.find();  // use methods on the model
+    const data = await Attendance.find();
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -18,7 +18,7 @@ router.get('/status/:studentID', async (req, res) => {
         const { studentID } = req.params;
         const today = new Date().toLocaleDateString();
 
-        const currentCheckIn = await findOne({
+        const currentCheckIn = await Attendance.findOne({
             studentID,
             scanDate: today,
             status: 'checked-in'
@@ -46,7 +46,7 @@ router.post('/scan', async (req, res) => {
         const now = new Date();
 
         // Check if user is currently checked in
-        const currentCheckIn = await findOne({
+        const currentCheckIn = await Attendance.findOne({
             studentID,
             scanDate: today,
             status: 'checked-in'
@@ -106,7 +106,6 @@ router.post('/scan', async (req, res) => {
 router.post('/checkin', async (req, res) => {
     try {
         const { userId } = req.body;
-        // Always create a new attendance record for every check-in
         const attendance = new Attendance({
             user: userId,
             checkIn: new Date(),
@@ -123,8 +122,7 @@ router.post('/checkin', async (req, res) => {
 router.post('/checkout', async (req, res) => {
     try {
         const { userId } = req.body;
-        // Find the latest attendance record for this user that has no checkOut
-        const attendance = await findOne({
+        const attendance = await Attendance.findOne({
             user: userId,
             checkOut: null
         }).sort({ checkIn: -1 });
@@ -145,7 +143,7 @@ router.post('/checkout', async (req, res) => {
 router.get('/today', async (req, res) => {
     try {
         const today = new Date().toLocaleDateString();
-        const attendanceRecords = await find({
+        const attendanceRecords = await Attendance.find({
             scanDate: today
         }).sort({ checkInTime: -1 });
 
@@ -190,7 +188,7 @@ async function performAutoCheckout() {
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayDate = yesterday.toLocaleDateString();
 
-        const uncheckedOutUsers = await find({
+        const uncheckedOutUsers = await Attendance.find({
             scanDate: yesterdayDate,
             status: 'checked-in'
         });
@@ -198,7 +196,6 @@ async function performAutoCheckout() {
         let autoCheckedOutCount = 0;
 
         for (const attendance of uncheckedOutUsers) {
-            // Set checkout time to 11:59 PM of the same day
             const autoCheckoutTime = new Date(attendance.checkInTime);
             autoCheckoutTime.setHours(23, 59, 59, 999);
 
@@ -225,51 +222,41 @@ async function performAutoCheckout() {
     }
 }
 
-// Get all attendance records for a student, grouped by day
+// Get all attendance records for a student
 router.get('/student/:studentID', async (req, res) => {
     try {
         const { studentID } = req.params;
+        
         // Get all records for this student, sorted by checkInTime
-        const records = await find({ studentID }).sort({ checkInTime: -1 });
+        const records = await Attendance.find({ studentID }).sort({ checkInTime: -1 });
 
-        // Group by scanDate (one per day)
-        const grouped = {};
-        records.forEach(rec => {
-            const dateKey = rec.scanDate;
-            if (!grouped[dateKey]) {
-                grouped[dateKey] = {
-                    date: dateKey,
-                    checkIn: rec.checkInTime ? new Date(rec.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : null,
-                    checkOut: rec.checkOutTime ? new Date(rec.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : null,
-                    purpose: rec.purpose || '',
-                    rawDate: rec.checkInTime ? new Date(rec.checkInTime).toISOString() : null, // <-- FIX HERE
-                    status: rec.status,
-                    duration: rec.duration,
-                };
-            } else {
-                // If already exists, update checkOut if this record has a later checkOutTime
-                if (rec.checkOutTime && (!grouped[dateKey].checkOut || rec.checkOutTime > grouped[dateKey].checkOut)) {
-                    grouped[dateKey].checkOut = new Date(rec.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-                }
-            }
-        });
-
-        // Convert grouped object to array, sorted by date descending
-        const result = Object.values(grouped).sort((a, b) => b.rawDate - a.rawDate);
+        // Transform records for frontend
+        const transformedRecords = records.map(record => ({
+            studentID: record.studentID,
+            firstName: record.firstName,
+            lastName: record.lastName,
+            purpose: record.purpose,
+            checkInTime: record.checkInTime,
+            checkOutTime: record.checkOutTime,
+            scanTime: record.checkInTime, // For backward compatibility
+            scanDate: record.scanDate,
+            status: record.status,
+            duration: record.duration
+        }));
 
         res.json({
             success: true,
-            records: result
+            records: transformedRecords
         });
     } catch (error) {
         console.error('Error fetching student attendance:', error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching attendance records'
+            message: 'Error fetching attendance records',
+            error: error.message
         });
     }
 });
 
 export default router;
-const _performAutoCheckout = performAutoCheckout;
-export { _performAutoCheckout as performAutoCheckout };
+export { performAutoCheckout };
