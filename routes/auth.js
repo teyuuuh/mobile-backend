@@ -1325,6 +1325,30 @@ router.post('/verify-reset-token', async (req, res) => {
   }
 });
 
+// Update user by email
+router.put('/update/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { course, yearLevel, department, studentID } = req.body;
+
+    const updatedUser = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { course, yearLevel, department, studentID },
+      { new: true }
+    ).select('-password');
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    res.json({ success: true, data: updatedUser });
+  } catch (error) {
+    console.error('Update user error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update user' });
+  }
+});
+
+
 
 
 
