@@ -88,7 +88,7 @@ router.post('/:userId/upload-profile', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/change-password', auth, async (req, res) => {
+router.post('/change-password', authenticateToken, async (req, res) => {
   try {
     const userId = req.user._id;
     const { currentPassword, newPassword } = req.body;
