@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import cloudinary from '../config/cloudinary.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import bcrypt from 'bcrypt';
 
 const router = express.Router();
 
@@ -15,9 +16,9 @@ const __dirname = path.dirname(__filename);
 router.get('/:userId/history', authenticateToken, async (req, res) => {
   try {
     if (req.user._id.toString() !== req.params.userId) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         success: false,
-        error: 'Unauthorized to access this history' 
+        error: 'Unauthorized to access this history'
       });
     }
 
@@ -27,11 +28,11 @@ router.get('/:userId/history', authenticateToken, async (req, res) => {
         select: 'title author imageUrl description'
       })
       .select('history');
-    
+
     if (!user) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: 'User not found' 
+        error: 'User not found'
       });
     }
 
@@ -41,7 +42,7 @@ router.get('/:userId/history', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('History fetch error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: 'Failed to fetch history',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -94,26 +95,50 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ success: false, error: 'All fields are required.' });
+      return res.status(400).json({
+        success: false,
+        error: 'All fields are required.'
+      });
     }
+
     if (newPassword.length < 8) {
-      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters.' });
+      return res.status(400).json({
+        success: false,
+        error: 'New password must be at least 8 characters.'
+      });
     }
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, error: 'User not found.' });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found.'
+      });
+    }
 
     const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) return res.status(401).json({ success: false, error: 'Current password is incorrect.' });
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        error: 'Current password is incorrect.'
+      });
+    }
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
     await user.save();
 
-    res.json({ success: true, message: 'Password updated successfully.' });
+    res.json({
+      success: true,
+      message: 'Password updated successfully.'
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: 'Server error.' });
+    console.error('Password change error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Server error.'
+    });
   }
 });
 
