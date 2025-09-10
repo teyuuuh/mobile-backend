@@ -166,7 +166,6 @@ router.post('/register', validateRegisterInput, async (req, res) => {
   }
 });
 
-// Enhanced login route with detailed logging
 router.post('/login', async (req, res) => {
   try {
     const { identifier, password } = req.body;
@@ -187,14 +186,7 @@ router.post('/login', async (req, res) => {
     const cleanIdentifier = identifier.toLowerCase().trim();
     console.log('Clean identifier:', cleanIdentifier);
 
-    // Find user by email OR studentID with detailed logging
-    console.log('Searching for user with query:', {
-      $or: [
-        { email: cleanIdentifier },
-        { studentID: identifier.trim() } // Keep original case for studentID
-      ]
-    });
-
+    // Find user by email OR studentID
     const user = await User.findOne({
       $or: [
         { email: cleanIdentifier },
@@ -203,16 +195,6 @@ router.post('/login', async (req, res) => {
     }).select('+password +isVerified +verificationToken +verificationTokenExpires');
 
     console.log('User found:', user ? 'YES' : 'NO');
-
-    if (user) {
-      console.log('User details:', {
-        _id: user._id,
-        email: user.email,
-        studentID: user.studentID,
-        isVerified: user.isVerified,
-        hasPassword: !!user.password
-      });
-    }
 
     if (!user) {
       console.log('No user found - Invalid credentials');
@@ -223,7 +205,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Password comparison with logging
+    // Password comparison
     console.log('Comparing passwords...');
     console.log('Stored password hash:', user.password ? '[PRESENT]' : '[MISSING]');
 
@@ -286,45 +268,97 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    console.log('User is verified, generating OTP');
+    // ✅ FIX: Check if OTP is required (only for certain scenarios)
+    // For password changes, we should skip OTP and login directly
+    const requiresOTP = req.headers['x-skip-otp'] !== 'true'; // Default to requiring OTP
+    
+    if (requiresOTP) {
+      console.log('Generating OTP for login');
+      // Generate and send OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      user.otp = otp;
+      user.otpExpires = Date.now() + 15 * 60 * 1000; // 15 minutes
+      await user.save();
 
-    // For verified users, generate and send OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    user.otp = otp;
-    user.otpExpires = Date.now() + 15 * 60 * 1000; // 15 minutes
-    await user.save();
+      console.log('OTP generated and saved:', otp);
 
-    console.log('OTP generated and saved:', otp);
+      // Send OTP email
+      const fullName = `${user.firstName} ${user.middleName ? user.middleName + ' ' : ''}${user.lastName}`.trim();
+      const emailSent = await sendEmail(user.email, 2, {
+        name: fullName,
+        otp: otp,
+        ipAddress: req.ip || 'Unknown'
+      });
 
-    // Send OTP email
-    const fullName = `${user.firstName} ${user.middleName ? user.middleName + ' ' : ''}${user.lastName}`.trim();
-    const emailSent = await sendEmail(user.email, 2, {
-      name: fullName,
-      otp: otp,
-      ipAddress: req.ip || 'Unknown'
-    });
+      console.log('OTP email sent:', emailSent);
 
-    console.log('OTP email sent:', emailSent);
+      if (!emailSent) {
+        console.log('Failed to send OTP email');
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to send OTP. Please try again.',
+          code: 'EMAIL_SEND_FAILED'
+        });
+      }
 
-    if (!emailSent) {
-      console.log('Failed to send OTP email');
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to send OTP. Please try again.',
-        code: 'EMAIL_SEND_FAILED'
+      console.log('=== LOGIN SUCCESS - OTP SENT ===');
+
+      // Return success with OTP requirement
+      return res.json({
+        success: true,
+        message: 'OTP sent to your email',
+        requiresOTP: true,
+        email: user.email,
+        code: 'OTP_SENT'
+      });
+    } else {
+      // ✅ FIX: Skip OTP and login directly (for password changes)
+      console.log('Skipping OTP - direct login');
+      
+      // Clear any existing OTP
+      user.otp = undefined;
+      user.otpExpires = undefined;
+      user.lastLogin = new Date();
+      user.loginCount = (user.loginCount || 0) + 1;
+      await user.save();
+
+      // Generate JWT token
+      const authToken = jwt.sign(
+        {
+          userId: user._id,
+          email: user.email,
+          role: user.role
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '8h' }
+      );
+
+      // Return user data without password
+      const userData = {
+        _id: user._id,
+        firstName: user.firstName,
+        middleName: user.middleName,
+        lastName: user.lastName,
+        studentID: user.studentID,
+        email: user.email,
+        phone: user.phone,
+        course: user.course,
+        department: user.department,
+        yearLevel: user.yearLevel,
+        role: user.role,
+        isVerified: user.isVerified
+      };
+
+      console.log('=== DIRECT LOGIN SUCCESS ===');
+      
+      return res.json({
+        success: true,
+        message: 'Login successful',
+        authToken,
+        user: userData,
+        requiresOTP: false
       });
     }
-
-    console.log('=== LOGIN SUCCESS - OTP SENT ===');
-
-    // Return success with OTP requirement
-    return res.json({
-      success: true,
-      message: 'OTP sent to your email',
-      requiresOTP: true,
-      email: user.email,
-      code: 'OTP_SENT'
-    });
 
   } catch (error) {
     console.error('=== LOGIN ERROR ===');
