@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import cloudinary from '../config/cloudinary.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const router = express.Router();
 
@@ -91,53 +91,70 @@ router.post('/:userId/upload-profile', authenticateToken, async (req, res) => {
 
 router.post('/change-password', authenticateToken, async (req, res) => {
   try {
+    console.log('Change password request received:', req.body);
+    
     const userId = req.user._id;
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        error: 'All fields are required.'
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required.' 
       });
     }
-
+    
     if (newPassword.length < 8) {
-      return res.status(400).json({
-        success: false,
-        error: 'New password must be at least 8 characters.'
+      return res.status(400).json({ 
+        success: false, 
+        error: 'New password must be at least 8 characters.' 
       });
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found.'
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found.' 
+      });
+    }
+
+    console.log('User found:', user.email);
+    
+    // Check if user has a password (might be social login user)
+    if (!user.password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Password change not allowed for this account type.' 
       });
     }
 
     const isMatch = await bcrypt.compare(currentPassword, user.password);
+    console.log('Password match result:', isMatch);
+    
     if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        error: 'Current password is incorrect.'
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Current password is incorrect.' 
       });
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
     user.password = hashedPassword;
     await user.save();
 
-    res.json({
-      success: true,
-      message: 'Password updated successfully.'
+    console.log('Password updated successfully for user:', user.email);
+
+    res.json({ 
+      success: true, 
+      message: 'Password updated successfully.' 
     });
   } catch (err) {
     console.error('Password change error:', err);
-    res.status(500).json({
-      success: false,
-      error: 'Server error.'
+    res.status(500).json({ 
+      success: false, 
+      error: 'Server error: ' + err.message 
     });
   }
 });
